@@ -80,7 +80,7 @@ def main():
     df = pd.read_csv(args.qcov_file, delimiter='\t')
     err_log = []
 
-    outlines = ['query\ttarget\ttarget_rec_chain\tligand_chain\trelease_date\taln_evalue\tpocket_qcov\tsucos\tpocket_sucos']
+    outlines = ['query\ttarget\ttarget_rec_chain\tligand_chain\trelease_date\taln_evalue\tpocket_qcov\tsucos\tsucos_pocket']
 
     q_mol = Chem.MolFromMolFile(args.lig_sdf)
 
@@ -98,8 +98,8 @@ def main():
 
         #if pocket_qcov == 0:
         #    sucos = 0
-        #    pocket_sucos = 0
-        #    outlines.append(f'{query}\t{target}\t{rec_ch}\t{lig_ch}\t{rls_date}\t{evalue}\t{pocket_qcov}\t{sucos}\t{pocket_sucos}')
+        #    sucos_pocket = 0
+        #    outlines.append(f'{query}\t{target}\t{rec_ch}\t{lig_ch}\t{rls_date}\t{evalue}\t{pocket_qcov}\t{sucos}\t{sucos_pocket}')
         #    continue
 
         plinder_system = PlinderSystem(system_id=target)
@@ -123,8 +123,8 @@ def main():
         
         try:
             sucos = get_sucos_score(q_mol, t_mol)
-            pocket_sucos = sucos*pocket_qcov
-            outlines.append(f'{query}\t{target}\t{rec_ch}\t{lig_ch}\t{rls_date}\t{evalue}\t{pocket_qcov}\t{sucos}\t{pocket_sucos}')
+            sucos_pocket = sucos*pocket_qcov
+            outlines.append(f'{query}\t{target}\t{rec_ch}\t{lig_ch}\t{rls_date}\t{evalue}\t{pocket_qcov}\t{sucos}\t{sucos_pocket}')
         except Exception as e:
             err_log.append(f'SuCOS error for: {target} {lig_ch} {Chem.MolToSmiles(t_mol)}:\n')
             err_log.append(str(e)+ '\n')
