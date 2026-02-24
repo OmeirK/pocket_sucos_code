@@ -123,7 +123,7 @@ def main():
         
         try:
             sucos = get_sucos_score(q_mol, t_mol)
-            sucos_pocket = sucos*pocket_qcov
+            sucos_pocket = sucos*(pocket_qcov/100)
             outlines.append(f'{query}\t{target}\t{rec_ch}\t{lig_ch}\t{rls_date}\t{evalue}\t{pocket_qcov}\t{sucos}\t{sucos_pocket}')
         except Exception as e:
             err_log.append(f'SuCOS error for: {target} {lig_ch} {Chem.MolToSmiles(t_mol)}:\n')
