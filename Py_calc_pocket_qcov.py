@@ -25,7 +25,7 @@ args = parser.parse_args()
 def get_pocket_resis(rec_sele, lig_sele):
     stored.resi_l = []
 
-    cmd.select('pocket', f'({rec_sele}) and polymer.protein within 6 of ({lig_sele})')
+    cmd.select('pocket', f'({rec_sele}) and polymer.protein within 6.0 of ({lig_sele})')
     cmd.iterate('pocket', 'stored.resi_l.append((resi))')
 
     resi_l = []
@@ -35,8 +35,8 @@ def get_pocket_resis(rec_sele, lig_sele):
 
     return resi_l
 
+# Get index of the first and last receptor residues
 def get_first_resi(sele):
-    # Get index of the first receptor residue
     stored.all_resi = []
     cmd.iterate(sele, 'stored.all_resi.append(resi)')
     all_resi = list(set(stored.all_resi))
@@ -51,8 +51,6 @@ def get_first_resi(sele):
 def get_d3i_aln_resis(d3i_tsv, pocket_resi_l, q_first_resi):
     df = pd.read_csv(d3i_tsv, delimiter='\t')
     
-    for h in df.head(): 
-        print(h)
     aln_data = {}
     for i, query in enumerate(df['query']):
         target  = df['target'].iloc[i]
@@ -99,7 +97,7 @@ def get_d3i_aln_resis(d3i_tsv, pocket_resi_l, q_first_resi):
 
                 #if q_resi in pocket_resi_l:
                 if pdb_resi in pocket_resi_l:
-                    #if target in ['rec__4inh__1__1.A__1.J__1.A', 'rec__7h3w__2__1.B__1.G__1.B']:
+                    #if target in ['rec__1iup__1__1.A__1.B__1.A']:
                     #    print(f'\t{target} Pocket Aln:', q_resi, f'pdb_resi: {pdb_resi}', maln[j], 'T_resi', t_resi)
                     aln_resis.append(q_resi)
                     aln_data[target]['q_aln_map'].append(q_resi)
@@ -111,6 +109,8 @@ def get_d3i_aln_resis(d3i_tsv, pocket_resi_l, q_first_resi):
         
     return aln_data
 
+# Map residue indices in the foldseek sequence to residues 
+# indices in the receptor PDB
 def plinder_seqmap(rec_sele, taln, tstart, pstart):
     tseq = ''
     for aa in taln:
@@ -151,6 +151,8 @@ def plinder_seqmap(rec_sele, taln, tstart, pstart):
 # Take the aligned target sequence, and find the starting index
 # in the protein sequence
 def map_plinder_seq_to_d3i(rec_sele, plinder_seq, taln, tstart):
+
+    # Get non-gapped sequence for the target
     tseq = ''
     for aa in taln:
         if aa != '-':
@@ -164,7 +166,7 @@ def map_plinder_seq_to_d3i(rec_sele, plinder_seq, taln, tstart):
 
     resi_first, resi_last = get_first_resi(rec_sele)
     #pdbstart = qstart+(q_first_resi-1)
-    pstart = pstart + (resi_first)
+    pstart = pstart + (resi_first) # Starting index in the PDB file
 
     #print('\t',tstart, pstart+1)
     #print('\t',tstart, pstart)
@@ -193,10 +195,7 @@ def main():
     plinder_data = query_index(columns=cols_of_interest)
 
     for target in aln_data:
-    #for target in ['rec__7h3w__2__1.B__1.G__1.B']: # Debug
-    #for target in ['rec__4inh__1__1.A__1.J__1.A']: # Debug
-    #for target in ['rec__6n4n__1__1.A_1.D__1.F__1.A']: # Debug
-    #for target in ['rec__3pp9__1__2.A__2.D__2.A']: # Debug
+    #for target in ['rec__1iup__1__1.A__1.B__1.A']: #Debug
         pdbid = target[:4]
         t_data = target.split('__')
         t_system_id = '__'.join(t_data[1:-1])
@@ -208,7 +207,7 @@ def main():
         entry_annotations = plinder_system.entry
         rls_date = entry_annotations['release_date']
         rls_date = datetime.datetime.strptime(rls_date, "%Y-%m-%d")
-        print(plinder_system.receptor_pdb)
+        #print(plinder_system.receptor_pdb)
         #print(plinder_system.receptor_cif)
         #print(plinder_system.sequences)
         #print(plinder_system.ligand_sdfs, rls_date, rls_date > TRAIN_CUTOFF)
@@ -233,7 +232,7 @@ def main():
 
         rec_seq = cmd.get_fastastr(f'rec and chain {pdb_chain}')
         rec_seq = ''.join(rec_seq.split('\n')[1:])
-        print('pdb_seq', rec_seq)
+        #print('pdb_seq', rec_seq)
         pstart = map_plinder_seq_to_d3i(f'rec and chain {pdb_chain}', rec_seq, aln_data[target]['taln'], aln_data[target]['tstart'])
         
         if pstart == None:
@@ -249,9 +248,8 @@ def main():
         # get pocket_residues for plinder ligands
         for lc in plinder_system.ligand_sdfs:
             cmd.load(plinder_system.ligand_sdfs[lc], f'lig-{lc}')
-            cmd.select(f'pocket-{lc}', f'(rec and polymer.protein and chain {pdb_chain}) within 6.0 of lig-{lc}')
-            #print('\t', f'pocket-{lc}')
             lc_pocket_resis = get_pocket_resis(f'(rec and polymer.protein and chain {pdb_chain})', f'lig-{lc}')
+            #print(f'T-{lc} pocket resis:', lc_pocket_resis)
 
             t_pocket_resis = []
             for resi in lc_pocket_resis:
@@ -285,9 +283,9 @@ def main():
         fo.write('\n'.join(outlines))
     
     
-    err_file = '/'.join(os.path.abspath(args.outfile).split('/')[:-1]) + f'/err_{os.path.basename(args.outfile)[:-4]}.err' 
+    err_file = '/'.join(os.path.abspath(args.outfile).split('/')[:-1]) + f'/{os.path.basename(args.outfile)[:-4]}.err' 
     
-    print(err_file)
+    #print(err_file)
     with open(err_file, 'w') as fo:
         fo.write('\n'.join(err_log))
 
