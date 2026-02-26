@@ -98,7 +98,7 @@ def main():
     all_out = []
 
     if args.tsv_out:
-        print(f'query\ttarget\tqstart\tqaln\tqend\tmidline\ttstart\ttaln\ttend\tevalue\tpident\tu\tt')
+        print(f'query\ttarget\tqstart\tqaln\tqend\tmidline\ttstart\ttaln\ttend\tevalue\tpident\tqcov\tu\tt')
     for row in parse_tsv(args.tsv, fmt_fields):
         qaln = row["qaln"]
         taln = row["taln"]
@@ -109,27 +109,49 @@ def main():
         tend = row["tend"]
         evalue = row["evalue"]
         pident = row["pident"]
-        u = row["u"]
-        t = row["t"]
+        qcov = row["qcov"]
+
+        try:
+            u = row["u"]
+            t = row["t"]
+        except:
+            pass
 
         midline = compute_midline(qaln, taln)
         
         if args.tsv_out:
-            print("\t".join([
-                row.get("query", ""),
-                row.get("target", ""),
-                qstart,
-                qaln,
-                qend,
-                midline,
-                tstart,
-                taln,
-                tend,
-                evalue,
-                pident,
-                u,
-                t
-            ]))
+            try:
+                print("\t".join([
+                    row.get("query", ""),
+                    row.get("target", ""),
+                    qstart,
+                    qaln,
+                    qend,
+                    midline,
+                    tstart,
+                    taln,
+                    tend,
+                    evalue,
+                    pident,
+                    qcov,
+                    u,
+                    t
+                ]))
+            except:
+                print("\t".join([
+                    row.get("query", ""),
+                    row.get("target", ""),
+                    qstart,
+                    qaln,
+                    qend,
+                    midline,
+                    tstart,
+                    taln,
+                    tend,
+                    evalue,
+                    pident,
+                    qcov
+                ]))
         else:
             query = row.get("query", "?")
             target = row.get("target", "?")

@@ -15,7 +15,8 @@ print(f"PLINDER local cache directory: {cfg.data.plinder_dir}")
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--d3i_tsv', '-i', help='d3i alignment file in tsv format')
+parser.add_argument('--d3i_tsv_foldseek', '-i_foldseek', help='d3i alignment file in tsv format')
+parser.add_argument('--d3i_tsv_mmseqs', '-i_mmseqs', help='mmseqs d3i alignment file in tsv format')
 parser.add_argument('--query_pdb', '-pdb', help='Path to the .pdb file used to run the foldseek search')
 parser.add_argument('--query_lig', '-sdf', help='Path to an .sdf with the ligand bount to the query pdb')
 parser.add_argument('--outfile', '-o', help='Name of the output .tsv file')
@@ -48,9 +49,10 @@ def get_first_resi(sele):
 
 # Get list of query sequence residues, and target sequence residues
 # that align with the binding site of the query pdb file
-def get_d3i_aln_resis(d3i_tsv, pocket_resi_l, q_first_resi):
-    df = pd.read_csv(d3i_tsv, delimiter='\t')
-    
+def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_resi):
+
+    # Read foldseek alignment data
+    df = pd.read_csv(d3i_tsv_foldseek, delimiter='\t')
     aln_data = {}
     for i, query in enumerate(df['query']):
         target  = df['target'].iloc[i]
@@ -60,8 +62,11 @@ def get_d3i_aln_resis(d3i_tsv, pocket_resi_l, q_first_resi):
         evalue = float(df['evalue'].iloc[i])
         qstart = int(df['qstart'].iloc[i])
         tstart = int(df['tstart'].iloc[i])
+        qcov = float(df['qcov'].iloc[i])
+
         u = df['u'].iloc[i]
         t = df['t'].iloc[i]
+
         pdbstart = qstart+(q_first_resi-1)
 
         #print(f'q pdbstart {target}', pdbstart)
@@ -78,22 +83,74 @@ def get_d3i_aln_resis(d3i_tsv, pocket_resi_l, q_first_resi):
             aln_data[target] = {'q_aln_map': [],
                                 'pdb_aln_map': [],
                                 't_aln_map': [],
+                                'qaln': qaln,
+                                'maln': maln,
                                 'taln': taln,
+                                'qstart': qstart,
                                 'tstart': tstart,
                                 'query': query,
                                 'evalue': evalue,
+                                'qcov': qcov,
+                                'pdbstart': pdbstart,
                                 'u': u,
-                                't': t}
+                                't': t,
+                                'method': 'foldseek'}
 
+    # Read mmseqs alignment data, replace foldseek data if 
+    # qcov is larger
+    df = pd.read_csv(d3i_tsv_mmseqs, delimiter='\t')
+    for i, query in enumerate(df['query']):
+        target  = df['target'].iloc[i]
+        qaln = df['qaln'].iloc[i]
+        taln = df['taln'].iloc[i]
+        maln = df['midline'].iloc[i]
+        evalue = float(df['evalue'].iloc[i])
+        qstart = int(df['qstart'].iloc[i])
+        tstart = int(df['tstart'].iloc[i])
+        qcov = float(df['qcov'].iloc[i])
 
+        pdbstart = qstart+(q_first_resi-1)
+
+        replace_data = False
+        try:
+            if (qcov  > aln_data[target]['qcov']):
+                replace_data = True
+        except:
+            pass
+
+        if (target not in aln_data) or (replace_data == True):
+            # Debug:
+            #if (replace_data):
+            #    print(f'{target} MMSEQS qcov is better: {qcov} > {aln_data[target]["qcov"]}')
+            #else:
+            #    print(f'{target} only appears in MMSEQS alignment')
+
+            aln_data[target] = {'q_aln_map': [],
+                                'pdb_aln_map': [],
+                                't_aln_map': [],
+                                'qaln': qaln,
+                                'maln': maln,
+                                'taln': taln,
+                                'qstart': qstart,
+                                'tstart': tstart,
+                                'query': query,
+                                'evalue': evalue,
+                                'qcov': qcov,
+                                'pdbstart': pdbstart,
+                                'u': None,
+                                't': None,
+                                'method': 'mmseqs'}
+
+    # Iterate through all aligned targets
+    for target in aln_data:
         # Check for matching residue positions
         aln_resis = []
         incr = 0
-        for j in range(len(qaln)):
-            if maln[j] != ' ':
-                q_resi = qstart + incr
-                t_resi = tstart + incr
-                pdb_resi = pdbstart+incr
+        for j in range(len(aln_data[target]['qaln'])):
+            if aln_data[target]['maln'][j] != ' ':
+                q_resi = aln_data[target]['qstart'] + incr
+                t_resi = aln_data[target]['tstart'] + incr
+                pdb_resi = aln_data[target]['pdbstart'] +incr
 
                 #if q_resi in pocket_resi_l:
                 if pdb_resi in pocket_resi_l:
@@ -104,7 +161,7 @@ def get_d3i_aln_resis(d3i_tsv, pocket_resi_l, q_first_resi):
                     aln_data[target]['t_aln_map'].append(t_resi)
                     aln_data[target]['pdb_aln_map'].append(pdb_resi)
 
-            if qaln[j] != '-':
+            if aln_data[target]['qaln'][j] != '-':
                 incr += 1
         
     return aln_data
@@ -175,7 +232,7 @@ def map_plinder_seq_to_d3i(rec_sele, plinder_seq, taln, tstart):
 
 
 def main():
-    outlines = ['query\ttarget\ttarget_rec_chain\tligand_chain\trelease_date\tpocket_qcov\taln_evalue\trot_mtx\ttrans_vec']
+    outlines = ['query\ttarget\ttarget_rec_chain\tligand_chain\trelease_date\tpocket_qcov\taln_evalue\trot_mtx\ttrans_vec\taln_method']
     err_log = []
 
     # Load the query system
@@ -188,7 +245,7 @@ def main():
     print(f'\t{q_pocket_size} residues available')
     q_first_resi, q_last_resi = get_first_resi('rec and polymer.protein')
     cmd.reinitialize()
-    aln_data = get_d3i_aln_resis(args.d3i_tsv, q_pocket_resis, q_first_resi)
+    aln_data = get_d3i_aln_resis(args.d3i_tsv_foldseek, args.d3i_tsv_mmseqs, q_pocket_resis, q_first_resi)
 
     # Search for targets in PLINDER:
     cols_of_interest = ["system_id", "entry_release_date", "entry_oligomeric_state", "entry_resolution"]
@@ -277,7 +334,7 @@ def main():
             
             print(f'\t{t_system_id} {lc} pocket_qcov: {pocket_qcov}')
 
-            outlines.append(f'{aln_data[target]["query"]}\t{t_system_id}\t{t_chain}\t{lc}\t{rls_date}\t{pocket_qcov}\t{aln_data[target]["evalue"]}\t{aln_data[target]["u"]}\t{aln_data[target]["t"]}')
+            outlines.append(f'{aln_data[target]["query"]}\t{t_system_id}\t{t_chain}\t{lc}\t{rls_date}\t{pocket_qcov}\t{aln_data[target]["evalue"]}\t{aln_data[target]["u"]}\t{aln_data[target]["t"]}\t{aln_data[target]["method"]}')
 
     with open(args.outfile, 'w') as fo:
         fo.write('\n'.join(outlines))
