@@ -17,7 +17,7 @@ export PLINDER_RELEASE=2024-06
 
 ### Create a custom foldseek database from PLINDER receptor structures.
 
-Copy receptor.cif structures installed in the `PLINDER_MOUNT`, to a new directory, then run
+Copy receptor.cif structures installed in the `$PLINDER_MOUNT/plinder/2024-06/v2/systems/`, to a new directory, then run
 the `foldseek createdb` command as specified in the [Foldseek documantation](https://github.com/steineggerlab/foldseek)
 
 ### To run:
@@ -29,6 +29,8 @@ bash 01_Sh_run_foldseek.sh $RECEPTOR_PDB $LIGAND_SDF $OUTDIR
 
 ### Known Issues:
 
--Foldseek alignment fails for chains with nonstandard residues
+*Foldseek alignment fails for chains with nonstandard residues
 
--Code only tested on single chain proteins
+*Code only tested on single chain proteins
+
+*In internal tests, pocket_qcov values are sometimes inconsistent with those reported in the [Runs N Poses Zenodo page](https://zenodo.org/records/18366081). We suspect this is because the packages used for pocket residue selection may be different.
