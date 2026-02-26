@@ -23,10 +23,10 @@ parser.add_argument('--outfile', '-o', help='Name of the output .tsv file')
 
 args = parser.parse_args()
 
-def get_pocket_resis(rec_sele, lig_sele):
+def get_pocket_resis(rec_sele, lig_sele, cutoff=6.0):
     stored.resi_l = []
 
-    cmd.select('pocket', f'({rec_sele}) and polymer.protein within 6.0 of ({lig_sele})')
+    cmd.select('pocket', f'({rec_sele}) and polymer.protein within {cutoff} of ({lig_sele})')
     cmd.iterate('pocket', 'stored.resi_l.append((resi))')
 
     resi_l = []
@@ -49,7 +49,7 @@ def get_first_resi(sele):
 
 # Get list of query sequence residues, and target sequence residues
 # that align with the binding site of the query pdb file
-def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_resi):
+def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_resi, rec_sele):
 
     # Read foldseek alignment data
     df = pd.read_csv(d3i_tsv_foldseek, delimiter='\t')
@@ -143,34 +143,40 @@ def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_r
 
     # Iterate through all aligned targets
     for target in aln_data:
-        # Check for matching residue positions
+    #for target in ['rec__2zjf__1__1.A__1.E__1.A']: #Debug
+        # Check for matching *aligned* residue positions
+        #q_pmap = plinder_seqmap(rec_sele, aln_data[target]['qaln'], aln_data[target]['qstart'], aln_data[target]['pdbstart'])
         aln_resis = []
-        incr = 0
+        q_incr = 0
+        t_incr = 0
         for j in range(len(aln_data[target]['qaln'])):
             if aln_data[target]['maln'][j] != ' ':
-                q_resi = aln_data[target]['qstart'] + incr
-                t_resi = aln_data[target]['tstart'] + incr
-                pdb_resi = aln_data[target]['pdbstart'] +incr
+                q_resi = aln_data[target]['qstart'] + q_incr
+                t_resi = aln_data[target]['tstart'] + t_incr
+                pdb_resi = aln_data[target]['pdbstart'] + q_incr
 
                 #if q_resi in pocket_resi_l:
                 if pdb_resi in pocket_resi_l:
-                    #if target in ['rec__1iup__1__1.A__1.B__1.A']:
-                    #    print(f'\t{target} Pocket Aln:', q_resi, f'pdb_resi: {pdb_resi}', maln[j], 'T_resi', t_resi)
+                    #print(f'\t{target} Q_resi:', q_resi, aln_data[target]['maln'][j], 'T_resi', t_resi)
                     aln_resis.append(q_resi)
                     aln_data[target]['q_aln_map'].append(q_resi)
                     aln_data[target]['t_aln_map'].append(t_resi)
                     aln_data[target]['pdb_aln_map'].append(pdb_resi)
 
             if aln_data[target]['qaln'][j] != '-':
-                incr += 1
+                q_incr += 1
+            if aln_data[target]['taln'][j] != '-':
+                t_incr += 1
         
     return aln_data
 
 # Map residue indices in the foldseek sequence to residues 
 # indices in the receptor PDB
 def plinder_seqmap(rec_sele, taln, tstart, pstart):
+    print(taln)
     tseq = ''
     for aa in taln:
+        #tseq += aa
         if aa != '-':
             tseq += aa
     #print(tseq)
@@ -196,9 +202,10 @@ def plinder_seqmap(rec_sele, taln, tstart, pstart):
         #print(aa, t_i, p_i, tseq[i], stored.resi_data[p_i])
 
         while tseq[i] != stored.resi_data[p_i]:
+            # Could edit here to allow for nonstandard AA (?) to match?
             p_i += 1
             #print('\tmismatch!', aa, t_i, p_i, tseq[i], stored.resi_data[p_i])
-
+        
         pmap[p_i] = t_i
         p_i += 1
 
@@ -208,14 +215,13 @@ def plinder_seqmap(rec_sele, taln, tstart, pstart):
 # Take the aligned target sequence, and find the starting index
 # in the protein sequence
 def map_plinder_seq_to_d3i(rec_sele, plinder_seq, taln, tstart):
-
+    
     # Get non-gapped sequence for the target
     tseq = ''
     for aa in taln:
         if aa != '-':
             tseq += aa
     print('aln_seq', tseq)
-    
     pstart = plinder_seq.find(tseq)
     if pstart == -1:
         #print('ERROR: No mapping found between pdb100 sequence and plinder sequence :(')
@@ -237,15 +243,16 @@ def main():
 
     # Load the query system
     cmd.reinitialize()
-    cmd.load(args.query_pdb, 'rec')
-    cmd.load(args.query_lig, 'lig')
-    q_pocket_resis = get_pocket_resis('rec and polymer.protein', 'lig')
+    cmd.load(args.query_pdb, 'qrec')
+    cmd.load(args.query_lig, 'qlig')
+    q_pocket_resis = get_pocket_resis('qrec and polymer.protein', 'qlig')
     q_pocket_size = len(q_pocket_resis)
     print(f'Q pocket residues: {q_pocket_resis}')
     print(f'\t{q_pocket_size} residues available')
-    q_first_resi, q_last_resi = get_first_resi('rec and polymer.protein')
+    q_first_resi, q_last_resi = get_first_resi('qrec and polymer.protein')
+    aln_data = get_d3i_aln_resis(args.d3i_tsv_foldseek, args.d3i_tsv_mmseqs, q_pocket_resis, q_first_resi, 'qrec')
     cmd.reinitialize()
-    aln_data = get_d3i_aln_resis(args.d3i_tsv_foldseek, args.d3i_tsv_mmseqs, q_pocket_resis, q_first_resi)
+    #return #Debug
 
     # Search for targets in PLINDER:
     cols_of_interest = ["system_id", "entry_release_date", "entry_oligomeric_state", "entry_resolution"]
@@ -253,6 +260,7 @@ def main():
 
     for target in aln_data:
     #for target in ['rec__1iup__1__1.A__1.B__1.A']: #Debug
+    #for target in ['rec__2zjf__1__1.A__1.E__1.A']: #Debug
         pdbid = target[:4]
         t_data = target.split('__')
         t_system_id = '__'.join(t_data[1:-1])
@@ -311,23 +319,27 @@ def main():
             t_pocket_resis = []
             for resi in lc_pocket_resis:
                 try:
+                    #print(f'\tT Pocket Convert: {resi} -> {t_pmap[resi]}')
                     t_pocket_resis.append(t_pmap[resi])
                 except:
-                    #print(f'Pocket resi {resi} not included in the foldseek alignment :S')
+                    print(f'Pocket resi {resi} not included in the foldseek alignment :S')
                     continue
 
 
-            #print(f'\t{lc} T pocket:', t_pocket_resis)
+            #print(f'\t{lc} T   pocket:', t_pocket_resis)
+            #print(f'\t{lc} pdb pocket:', lc_pocket_resis)
+            #print('\tQ aln to Q pocket:', aln_data[target]['q_aln_map'], len(aln_data[target]['q_aln_map']))
             #print('\tT aln to Q pocket:', aln_data[target]['t_aln_map'], len(aln_data[target]['t_aln_map']))
-            #print(f'\t{lc} pdb aln pocket:', lc_pocket_resis)
             #print('\tpdb aln to Q pocket:', aln_data[target]['pdb_aln_map'], len(aln_data[target]['pdb_aln_map']))
             
-            n_t_aln_overlap = 0
+            t_q_overlap = []
             for resi in t_pocket_resis:
-                if resi in aln_data[target]['t_aln_map']:
-                    n_t_aln_overlap += 1
+                if resi in aln_data[target]['t_aln_map']:   
+                    t_q_overlap.append(resi)
 
-            print(f'{n_t_aln_overlap} residues in the T binding site align to the Q binding site')
+            #print(f'\t{lc} T pocket-Q pocket overlap', t_q_overlap)
+            n_t_aln_overlap = len(t_q_overlap)
+            #print(f'{n_t_aln_overlap} residues in the T binding site align to the Q binding site')
 
             pocket_qcov = n_t_aln_overlap*100/q_pocket_size
 
