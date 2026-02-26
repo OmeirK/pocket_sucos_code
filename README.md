@@ -17,7 +17,7 @@ export PLINDER_RELEASE=2024-06
 
 ### Create a custom foldseek database from PLINDER receptor structures.
 
-Copy receptor.cif structures installed in the `PLINDER_MOUNT`, to a new directory, then run
+Copy receptor.cif structures installed in the `$PLINDER_MOUNT/plinder/2024-06/v2/systems/`, to a new directory, then run
 the `foldseek createdb` command as specified in the [Foldseek documantation](https://github.com/steineggerlab/foldseek)
 
 ### To run:
