@@ -267,9 +267,14 @@ def main():
         
         t_chain = t_data[-1]
         print(target, t_system_id, t_chain)
+        
+        try:
+            plinder_system = PlinderSystem(system_id=t_system_id)
+            entry_annotations = plinder_system.entry
+        except Exception as e:
+            err_log.append(f'{t_system_id} annotations not found for this PLINDER system?')
+            continue
 
-        plinder_system = PlinderSystem(system_id=t_system_id)
-        entry_annotations = plinder_system.entry
         rls_date = entry_annotations['release_date']
         rls_date = datetime.datetime.strptime(rls_date, "%Y-%m-%d")
         #print(plinder_system.receptor_pdb)

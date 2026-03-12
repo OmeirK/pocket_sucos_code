@@ -34,3 +34,5 @@ bash 01_Sh_run_foldseek.sh $RECEPTOR_PDB $LIGAND_SDF $OUTDIR
 *Code only tested on single chain proteins
 
 *In internal tests, pocket_qcov values are sometimes inconsistent with those reported in the [Runs N Poses Zenodo page](https://zenodo.org/records/18366081). We suspect this is because the packages used for pocket residue selection may be different.
+
+*PLINDER occaisionally fails to find system annotations for structures within the database
