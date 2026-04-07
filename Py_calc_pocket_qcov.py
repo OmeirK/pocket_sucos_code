@@ -5,13 +5,8 @@ import pandas as pd
 import datetime
 from Bio import AlignIO
 from pymol import cmd, stored
-import plinder.core.utils.config
-from plinder.core.scores import query_index
-from plinder.core import PlinderSystem
 
 TRAIN_CUTOFF = datetime.datetime(2021, 9, 30)
-cfg = plinder.core.get_config()
-print(f"PLINDER local cache directory: {cfg.data.plinder_dir}")
 
 parser = argparse.ArgumentParser()
 
@@ -20,8 +15,29 @@ parser.add_argument('--d3i_tsv_mmseqs', '-i_mmseqs', help='mmseqs d3i alignment 
 parser.add_argument('--query_pdb', '-pdb', help='Path to the .pdb file used to run the foldseek search')
 parser.add_argument('--query_lig', '-sdf', help='Path to an .sdf with the ligand bount to the query pdb')
 parser.add_argument('--outfile', '-o', help='Name of the output .tsv file')
+parser.add_argument('--custom', '-c', help='Provide a path to a custom database (i.e. not PLINDER). The data should be formatted like PLINDER. i.e, it contains with a structures/ parent directory, with subdirectories named after each system in the set. Each subdirectory should contain: receptor.cif, sequences.fasta, system.cif, and a ligand_files/ folder with sdf files for all ligands in the system', default=None)
 
 args = parser.parse_args()
+
+if args.custom == None:
+    import plinder.core.utils.config
+    from plinder.core.scores import query_index
+    from plinder.core import PlinderSystem
+    cfg = plinder.core.get_config()
+    print(f"PLINDER local cache directory: {cfg.data.plinder_dir}")
+else:
+    print(f'Using custom structure database!')
+    ANNOTATION_DF = pd.read_csv(f'{args.custom}/annotations.csv')
+    ANNOTATION_DATA = {}
+
+    for i, target in enumerate(ANNOTATION_DF['system_id']):
+        rls_date = ANNOTATION_DF['release_date'].iloc[i]
+
+        if target not in ANNOTATION_DATA:
+            ANNOTATION_DATA[target] = rls_date
+            print(target, rls_date)
+
+
 
 def get_pocket_resis(rec_sele, lig_sele, cutoff=6.0):
     stored.resi_l = []
@@ -255,50 +271,72 @@ def main():
     #return #Debug
 
     # Search for targets in PLINDER:
-    cols_of_interest = ["system_id", "entry_release_date", "entry_oligomeric_state", "entry_resolution"]
-    plinder_data = query_index(columns=cols_of_interest)
 
     for target in aln_data:
     #for target in ['rec__1iup__1__1.A__1.B__1.A']: #Debug
     #for target in ['rec__2zjf__1__1.A__1.E__1.A']: #Debug
-        pdbid = target[:4]
-        t_data = target.split('__')
-        t_system_id = '__'.join(t_data[1:-1])
         
-        t_chain = t_data[-1]
-        print(target, t_system_id, t_chain)
+        if args.custom == None:
+            t_data = target.split('__')
+            t_system_id = '__'.join(t_data[1:-1])
+            t_chain = t_data[-1]
+            print(target, t_system_id, t_chain)
+            try:
+                plinder_system = PlinderSystem(system_id=t_system_id)
+                entry_annotations = plinder_system.entry
+                rls_date = entry_annotations['release_date']
+                rls_date = datetime.datetime.strptime(rls_date, "%Y-%m-%d")
+            except Exception as e:
+                err_log.append(f'{t_system_id} annotations not found for this PLINDER system?')
+                continue
         
-        try:
-            plinder_system = PlinderSystem(system_id=t_system_id)
-            entry_annotations = plinder_system.entry
-        except Exception as e:
-            err_log.append(f'{t_system_id} annotations not found for this PLINDER system?')
-            continue
+            # Plinder sequence appears to be different from the plinder receptor PDB.
+            # Create a fasta for the protein from the plinder receptor.pdb
+            entry_path = os.path.dirname(plinder_system.receptor_pdb)
+            chain_mapping = f'{entry_path}/chain_mapping.json'
+            with open(chain_mapping) as f:
+                cmap = json.load(f)
 
-        rls_date = entry_annotations['release_date']
-        rls_date = datetime.datetime.strptime(rls_date, "%Y-%m-%d")
-        #print(plinder_system.receptor_pdb)
-        #print(plinder_system.receptor_cif)
-        #print(plinder_system.sequences)
-        #print(plinder_system.ligand_sdfs, rls_date, rls_date > TRAIN_CUTOFF)
+            pdb_chain = cmap[t_chain]
+            cmd.reinitialize()
+            cmd.load(plinder_system.receptor_pdb, 'rec')
+        else:
+            # Gotta do some weird string manipulatiosn for RnP :s
+            # Deepseek adds _{rec_chain} to the end of the target name, 
+            # which conflicts with the PLINDER naming scheme
+            t_data = target.split('__')
 
-        # Dont consider testing set ligands
-        #if rls_date > TRAIN_CUTOFF:
-        #    print('\tSkipping, it is in the test set')
-        #    continue
-        
-        # Plinder sequence appears to be different from the plinder receptor PDB.
-        # Create a fasta for the protein from the plinder receptor.pdb
-        entry_path = os.path.dirname(plinder_system.receptor_pdb)
-        chain_mapping = f'{entry_path}/chain_mapping.json'
-        with open(chain_mapping) as f:
-            cmap = json.load(f)
+            rec_chains = t_data[3].split('_')
+            lig_chains = t_data[4].split('_')
+            
+            t_system_id = '__'.join(t_data[1:4]) + '__'
+            for llc in lig_chains:
+                print(llc, rec_chains)
+                if llc not in rec_chains:
+                    t_system_id += f'{llc}_'
+            
+            t_system_id = t_system_id[:-1]
+            
+            if len(rec_chains) == 1:
+                t_chain = rec_chains[0]
+            else:
+                t_chain = t_data[-1].split('_')[0]
 
-        pdb_chain = cmap[t_chain]
-        cmd.reinitialize()
-        cmd.load(plinder_system.receptor_pdb, 'rec')
-        #cmd.load(plinder_system.receptor_cif, 'rec')
-        #rec_seq = cmd.get_fastastr(f'rec and chain {t_chain}')
+            print(target, t_system_id, t_chain)
+            try:
+                rls_date = ANNOTATION_DATA[t_system_id]
+                rls_date = datetime.datetime.strptime(rls_date, "%Y-%m-%d")
+            except:
+                rls_date = None
+            print(t_system_id, t_system_id in ANNOTATION_DATA, rls_date)
+
+            rec_pdb = f'{args.custom}/structures/{t_system_id}/system.cif'
+            cmd.reinitialize()
+            cmd.load(rec_pdb, 'rec')
+            pdb_chain = t_chain
+
+            ## END IF ##
+
 
         rec_seq = cmd.get_fastastr(f'rec and chain {pdb_chain}')
         rec_seq = ''.join(rec_seq.split('\n')[1:])
@@ -315,9 +353,19 @@ def main():
         #if pstart != aln_data[target]['tstart']:
         #    raise ValueError('pstart tstart mismatch!')
         
-        # get pocket_residues for plinder ligands
-        for lc in plinder_system.ligand_sdfs:
-            cmd.load(plinder_system.ligand_sdfs[lc], f'lig-{lc}')
+        # get pocket_residues for plinder ligandss
+        if args.custom == None:
+            ligand_sdfs = plinder_system.ligand_sdfs
+        else:
+            ligand_sdfs = {}
+            for lsdf in os.listdir(f'{args.custom}/structures/{t_system_id}/ligand_files/'):
+                lc = os.path.basename(lsdf)[:-4]
+                print(lc, lsdf)
+                ligand_sdfs[lc] = f'{args.custom}/structures/{t_system_id}/ligand_files/{lsdf}'
+                
+
+        for lc in ligand_sdfs:
+            cmd.load(ligand_sdfs[lc], f'lig-{lc}')
             lc_pocket_resis = get_pocket_resis(f'(rec and polymer.protein and chain {pdb_chain})', f'lig-{lc}')
             #print(f'T-{lc} pocket resis:', lc_pocket_resis)
 

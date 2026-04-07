@@ -2,23 +2,25 @@
 
 import argparse
 import os
+import glob
 import pandas as pd
 import numpy as np
 from typing import Optional, Tuple
 from rdkit import Chem, DataStructs, RDConfig
 from rdkit.Chem import AllChem, rdShapeAlign, rdShapeHelpers
 from rdkit.Chem.FeatMaps import FeatMaps
-from plinder.core import get_config
-from plinder.core.scores import query_index
-from plinder.core import PlinderSystem
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--qcov_file', '-q', help='tsv file with pocket_qcov values')
 parser.add_argument('--lig_sdf', '-sdf', help='.sdf file with the query ligand')
 parser.add_argument('--outfile', '-o', help='Name of the output .tsv file')
+parser.add_argument('--custom', '-c', help='Provide a path to a custom database (i.e. not PLINDER). The data should be formatted like PLINDER. i.e, it contains with a structures/ parent directory, with subdirectories named after each system in the set. Each subdirectory should contain: receptor.cif, sequences.fasta, system.cif, and a ligand_files/ folder with sdf files for all ligands in the system', default=None)
 
 args = parser.parse_args()
+
+if args.custom == None:
+    from plinder.core import PlinderSystem
 
 # Adapted from https://github.com/susanhleung/SuCOS
 # Initialize feature factory for pharmacophore scoring
@@ -117,10 +119,12 @@ def main():
         print(i, target, rls_date)
         print(f'\tPocket_qcov: {pocket_qcov}')
 
-        plinder_system = PlinderSystem(system_id=target)
-        target_sdfs = plinder_system.ligand_sdfs
-
-        target_sdf = target_sdfs[lig_ch]
+        if args.custom == None:
+            plinder_system = PlinderSystem(system_id=target)
+            target_sdfs = plinder_system.ligand_sdfs
+            target_sdf = target_sdfs[lig_ch]
+        else:
+            target_sdf = f'{args.custom}/structures/{target}/ligand_files/{lig_ch}.sdf'
         
         # Apply the foldseek alignment
         '''
