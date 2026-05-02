@@ -161,8 +161,12 @@ def main():
             shape_similarity, color_similarity = align_molecules(q_mol, t_mol)
             print(f'\tShape: {shape_similarity}\tColor: {color_similarity}')
         except Exception as e:
-            err_log.append(f'Alignment error for: {target} {lig_ch} {Chem.MolToSmiles(t_mol)}:\n')
-            err_log.append(str(e)+ '\n')
+            try:
+                err_log.append(f'Alignment error for: {target} {lig_ch} {Chem.MolToSmiles(t_mol)}:\n')
+                err_log.append(str(e)+ '\n')
+            except:
+                err_log.append(f'Alignment error for: {target} {lig_ch} CANNOT_RESOLVE_SMILES:\n')
+                err_log.append(str(e)+ '\n')
             shape_similarity = np.nan
             color_similarity = np.nan
 
