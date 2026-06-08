@@ -88,7 +88,7 @@ def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_r
         #print(f'q pdbstart {target}', pdbstart)
         #print(qaln)
         #print(maln)
-        #print(taln)
+        #print('taln', taln, qcov)
         #print(evalue) # Add an e-value cutoff?
 
         #if evalue >= 0.001:
@@ -128,11 +128,10 @@ def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_r
         pdbstart = qstart+(q_first_resi-1)
 
         replace_data = False
-        try:
-            if (qcov  > aln_data[target]['qcov']):
-                replace_data = True
-        except:
-            pass
+        if (qcov  > aln_data[target]['qcov']):
+            replace_data = True
+        #elif (qcov >= aln_data[target]['qcov']) and (qcov == 1.0):
+        #    replace_data = True
 
         if (target not in aln_data) or (replace_data == True):
             # Debug:
@@ -161,7 +160,7 @@ def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_r
     for target in aln_data:
     #for target in ['rec__2zjf__1__1.A__1.E__1.A']: #Debug
         # Check for matching *aligned* residue positions
-        #q_pmap = plinder_seqmap(rec_sele, aln_data[target]['qaln'], aln_data[target]['qstart'], aln_data[target]['pdbstart'])
+        q_pmap, q_tmap = plinder_seqmap(rec_sele, aln_data[target]['qaln'], aln_data[target]['qstart'], aln_data[target]['pdbstart'])
         aln_resis = []
         q_incr = 0
         t_incr = 0
@@ -169,7 +168,8 @@ def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_r
             if aln_data[target]['maln'][j] != ' ':
                 q_resi = aln_data[target]['qstart'] + q_incr
                 t_resi = aln_data[target]['tstart'] + t_incr
-                pdb_resi = aln_data[target]['pdbstart'] + q_incr
+                #pdb_resi = aln_data[target]['pdbstart'] + q_incr
+                pdb_resi = q_tmap[q_resi]
 
                 #if q_resi in pocket_resi_l:
                 if pdb_resi in pocket_resi_l:
@@ -189,13 +189,14 @@ def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_r
 # Map residue indices in the foldseek sequence to residues 
 # indices in the receptor PDB
 def plinder_seqmap(rec_sele, taln, tstart, pstart):
-    print(taln)
+    #print('SEQMAP!')
+    #print('taln', taln)
     tseq = ''
     for aa in taln:
         #tseq += aa
         if aa != '-':
             tseq += aa
-    #print(tseq)
+    #print('tseq', tseq)
 
     resi_first, resi_last = get_first_resi(rec_sele)
 
@@ -211,6 +212,7 @@ def plinder_seqmap(rec_sele, taln, tstart, pstart):
         #print(i, stored.resi_data[i])
     
     pmap = {} # Map PDB sequence to aln sequence index
+    tmap = {} # Map aln sequence index to pdb
     t_i = tstart
     p_i = pstart
     for i, aa in enumerate(tseq):
@@ -223,10 +225,11 @@ def plinder_seqmap(rec_sele, taln, tstart, pstart):
             #print('\tmismatch!', aa, t_i, p_i, tseq[i], stored.resi_data[p_i])
         
         pmap[p_i] = t_i
+        tmap[t_i] = p_i
         p_i += 1
 
 
-    return pmap   
+    return pmap, tmap
 
 # Take the aligned target sequence, and find the starting index
 # in the protein sequence
@@ -237,7 +240,7 @@ def map_plinder_seq_to_d3i(rec_sele, plinder_seq, taln, tstart):
     for aa in taln:
         if aa != '-':
             tseq += aa
-    print('aln_seq', tseq)
+    #print('aln_seq', tseq)
     pstart = plinder_seq.find(tseq)
     if pstart == -1:
         #print('ERROR: No mapping found between pdb100 sequence and plinder sequence :(')
@@ -261,10 +264,11 @@ def main():
     cmd.reinitialize()
     cmd.load(args.query_pdb, 'qrec')
     cmd.load(args.query_lig, 'qlig')
+    cmd.remove('elem H')
     q_pocket_resis = get_pocket_resis('qrec and polymer.protein', 'qlig')
     q_pocket_size = len(q_pocket_resis)
-    print(f'Q pocket residues: {q_pocket_resis}')
-    print(f'\t{q_pocket_size} residues available')
+    #print(f'Q pocket residues: {q_pocket_resis}')
+    #print(f'\t{q_pocket_size} residues available')
     q_first_resi, q_last_resi = get_first_resi('qrec and polymer.protein')
     aln_data = get_d3i_aln_resis(args.d3i_tsv_foldseek, args.d3i_tsv_mmseqs, q_pocket_resis, q_first_resi, 'qrec')
     cmd.reinitialize()
@@ -311,7 +315,7 @@ def main():
             
             t_system_id = '__'.join(t_data[1:4]) + '__'
             for llc in lig_chains:
-                print(llc, rec_chains)
+                #print(llc, rec_chains)
                 if llc not in rec_chains:
                     t_system_id += f'{llc}_'
             
@@ -348,8 +352,12 @@ def main():
             continue
 
         # Map plinder taln sequence to pdb sequence
-        t_pmap = plinder_seqmap(f'(rec and polymer.protein and chain {pdb_chain})', aln_data[target]['taln'], aln_data[target]['tstart'], pstart)
-
+        try:
+            t_pmap, t_tmap = plinder_seqmap(f'(rec and polymer.protein and chain {pdb_chain})', aln_data[target]['taln'], aln_data[target]['tstart'], pstart)
+        except:
+            err_log.append(f'{target} plinder_seqmap failed.\n\tt_aln: {aln_data[target]["taln"]}\n\tp_seq: {rec_seq}')
+            continue
+        
         #if pstart != aln_data[target]['tstart']:
         #    raise ValueError('pstart tstart mismatch!')
         
@@ -360,7 +368,7 @@ def main():
             ligand_sdfs = {}
             for lsdf in os.listdir(f'{args.custom}/structures/{t_system_id}/ligand_files/'):
                 lc = os.path.basename(lsdf)[:-4]
-                print(lc, lsdf)
+                #print(lc, lsdf)
                 ligand_sdfs[lc] = f'{args.custom}/structures/{t_system_id}/ligand_files/{lsdf}'
                 
 
@@ -378,15 +386,16 @@ def main():
                     print(f'Pocket resi {resi} not included in the foldseek alignment :S')
                     continue
 
-
-            #print(f'\t{lc} T   pocket:', t_pocket_resis)
-            #print(f'\t{lc} pdb pocket:', lc_pocket_resis)
+            # Pocket alignment summary
+            #print(f'\t{lc} Tpdb pocket:', lc_pocket_resis, len(lc_pocket_resis))
+            #print(f'\t{lc} T   pocket:', t_pocket_resis, len(lc_pocket_resis))
             #print('\tQ aln to Q pocket:', aln_data[target]['q_aln_map'], len(aln_data[target]['q_aln_map']))
             #print('\tT aln to Q pocket:', aln_data[target]['t_aln_map'], len(aln_data[target]['t_aln_map']))
             #print('\tpdb aln to Q pocket:', aln_data[target]['pdb_aln_map'], len(aln_data[target]['pdb_aln_map']))
             
             t_q_overlap = []
             for resi in t_pocket_resis:
+                #print(resi, resi in aln_data[target]['t_aln_map'])
                 if resi in aln_data[target]['t_aln_map']:   
                     t_q_overlap.append(resi)
 
