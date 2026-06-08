@@ -218,11 +218,15 @@ def plinder_seqmap(rec_sele, taln, tstart, pstart):
     for i, aa in enumerate(tseq):
         t_i = tstart + i
         #print(aa, t_i, p_i, tseq[i], stored.resi_data[p_i])
-
-        while tseq[i] != stored.resi_data[p_i]:
-            # Could edit here to allow for nonstandard AA (?) to match?
-            p_i += 1
-            #print('\tmismatch!', aa, t_i, p_i, tseq[i], stored.resi_data[p_i])
+        
+        if (tseq[i] == 'X') and (stored.resi_data[p_i] == '-' or stored.resi_data[p_i] == 'X'):
+            #print('\tX mismatch', aa, t_i, p_i, tseq[i], stored.resi_data[p_i])
+            pass
+        else:
+            while tseq[i] != stored.resi_data[p_i]:
+                # Could edit here to allow for nonstandard AA (?) to match?
+                p_i += 1
+                #print('\tmismatch!', aa, t_i, p_i, tseq[i], stored.resi_data[p_i])
         
         pmap[p_i] = t_i
         tmap[t_i] = p_i
