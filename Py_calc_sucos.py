@@ -178,8 +178,13 @@ def main():
             sucos_pocket_shape = sucos_pocket_shape*100
             print(f'\tSuCOS_pocket: {sucos_pocket_shape}')
         except Exception as e:
-            err_log.append(f'Alignment error for: {target} {lig_ch} {Chem.MolToSmiles(t_mol)}:\n')
-            err_log.append(str(e)+ '\n')
+            try:
+                err_log.append(f'Alignment error for: {target} {lig_ch} {Chem.MolToSmiles(t_mol)}:\n')
+                err_log.append(str(e)+ '\n')
+            except:
+                err_log.append(f'Alignment error for: {target} {lig_ch} {None}:\n')
+                err_log.append(str(e)+ '\n')
+
             sucos_shape = np.nan
             sucos_pocket_shape = np.nan
         
