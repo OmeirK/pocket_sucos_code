@@ -7,6 +7,7 @@ from Bio import AlignIO
 from pymol import cmd, stored
 
 TRAIN_CUTOFF = datetime.datetime(2021, 9, 30)
+ERR_LOG = []
 
 parser = argparse.ArgumentParser()
 
@@ -57,7 +58,15 @@ def get_first_resi(sele):
     stored.all_resi = []
     cmd.iterate(sele, 'stored.all_resi.append(resi)')
     all_resi = list(set(stored.all_resi))
-    tmp = list(map(int, all_resi))
+
+    try:
+        tmp = list(map(int, all_resi))
+    except:
+        tmp = []
+        for r in all_resi:
+            number = int("".join(c for c in r if c.isdigit()))
+            tmp.append(number)
+
     first_resi = min(tmp)
     last_resi = max(tmp)
     #print(first_resi)
@@ -126,10 +135,12 @@ def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_r
         qcov = float(df['qcov'].iloc[i])
 
         pdbstart = qstart+(q_first_resi-1)
-
+        
+        # Check if the target needs to be replaced with mmseqs data
         replace_data = False
-        if (qcov  > aln_data[target]['qcov']):
-            replace_data = True
+        if target in aln_data:
+            if (qcov  > aln_data[target]['qcov']):
+                replace_data = True
         #elif (qcov >= aln_data[target]['qcov']) and (qcov == 1.0):
         #    replace_data = True
 
@@ -160,7 +171,12 @@ def get_d3i_aln_resis(d3i_tsv_foldseek, d3i_tsv_mmseqs, pocket_resi_l, q_first_r
     for target in aln_data:
     #for target in ['rec__2zjf__1__1.A__1.E__1.A']: #Debug
         # Check for matching *aligned* residue positions
-        q_pmap, q_tmap = plinder_seqmap(rec_sele, aln_data[target]['qaln'], aln_data[target]['qstart'], aln_data[target]['pdbstart'])
+        try:
+            q_pmap, q_tmap = plinder_seqmap(rec_sele, aln_data[target]['qaln'], aln_data[target]['qstart'], aln_data[target]['pdbstart'])
+        except:
+            ERR_LOG.append(f'{target} query plinder_seqmap failed.\n\tq_aln: {aln_data[target]["qaln"]}')
+            continue
+
         aln_resis = []
         q_incr = 0
         t_incr = 0
@@ -262,7 +278,6 @@ def map_plinder_seq_to_d3i(rec_sele, plinder_seq, taln, tstart):
 
 def main():
     outlines = ['query\ttarget\ttarget_rec_chain\tligand_chain\trelease_date\tpocket_qcov\taln_evalue\trot_mtx\ttrans_vec\taln_method']
-    err_log = []
 
     # Load the query system
     cmd.reinitialize()
@@ -295,7 +310,7 @@ def main():
                 rls_date = entry_annotations['release_date']
                 rls_date = datetime.datetime.strptime(rls_date, "%Y-%m-%d")
             except Exception as e:
-                err_log.append(f'{t_system_id} annotations not found for this PLINDER system?')
+                ERR_LOG.append(f'{t_system_id} annotations not found for this PLINDER system?')
                 continue
         
             # Plinder sequence appears to be different from the plinder receptor PDB.
@@ -352,14 +367,14 @@ def main():
         pstart = map_plinder_seq_to_d3i(f'rec and chain {pdb_chain}', rec_seq, aln_data[target]['taln'], aln_data[target]['tstart'])
         
         if pstart == None:
-            err_log.append(f'{target} pocket_qcov failed.\n\tt_aln: {aln_data[target]["taln"]}\n\tp_seq: {rec_seq}')
+            ERR_LOG.append(f'{target} pocket_qcov failed.\n\tt_aln: {aln_data[target]["taln"]}\n\tp_seq: {rec_seq}')
             continue
 
         # Map plinder taln sequence to pdb sequence
         try:
             t_pmap, t_tmap = plinder_seqmap(f'(rec and polymer.protein and chain {pdb_chain})', aln_data[target]['taln'], aln_data[target]['tstart'], pstart)
         except:
-            err_log.append(f'{target} plinder_seqmap failed.\n\tt_aln: {aln_data[target]["taln"]}\n\tp_seq: {rec_seq}')
+            ERR_LOG.append(f'{target} plinder_seqmap failed.\n\tt_aln: {aln_data[target]["taln"]}\n\tp_seq: {rec_seq}')
             continue
         
         #if pstart != aln_data[target]['tstart']:
@@ -422,7 +437,7 @@ def main():
     
     #print(err_file)
     with open(err_file, 'w') as fo:
-        fo.write('\n'.join(err_log))
+        fo.write('\n'.join(ERR_LOG))
 
     #with open(f'json_aln_test.json', 'w') as fo:
     #    json.dump(aln_data, fo, indent=4)
